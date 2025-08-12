@@ -14,19 +14,24 @@ class Subscription extends Model
         'listing_url',
         'email',
         'current_price',
+        'listing_title',
         'is_verified',
         'verification_token',
-        'verified_at',
+        'is_active',
+        'last_checked_at',
     ];
 
     protected $casts = [
         'current_price' => 'decimal:2',
         'is_verified' => 'boolean',
-        'verified_at' => 'datetime',
+        'is_active' => 'boolean',
+        'last_checked_at' => 'datetime',
     ];
 
     /**
-     * Отримати історію цін для цього оголошення
+     * Get price histories for this subscription
+     *
+     * @return HasMany
      */
     public function priceHistories(): HasMany
     {
@@ -34,41 +39,24 @@ class Subscription extends Model
     }
 
     /**
-     * Скоуп для отримання тільки верифікованих підписок
+     * Check if subscription is verified and active
+     *
+     * @return bool
      */
-    public function scopeVerified($query)
+    public function isActive(): bool
     {
-        return $query->where('is_verified', true);
+        return $this->is_verified && $this->is_active;
     }
 
     /**
-     * Скоуп для отримання підписок по URL оголошення
-     */
-    public function scopeForListing($query, string $listingUrl)
-    {
-        return $query->where('listing_url', $listingUrl);
-    }
-
-    /**
-     * Генерує токен для верифікації email
+     * Generate verification token
+     *
+     * @return string
      */
     public function generateVerificationToken(): string
     {
-        $this->verification_token = bin2hex(random_bytes(32));
-        $this->save();
-
-        return $this->verification_token;
-    }
-
-    /**
-     * Верифікує підписку
-     */
-    public function verify(): bool
-    {
-        $this->is_verified = true;
-        $this->verified_at = now();
-        $this->verification_token = null;
-
-        return $this->save();
+        $token = bin2hex(random_bytes(32));
+        $this->verification_token = $token;
+        return $token;
     }
 }
