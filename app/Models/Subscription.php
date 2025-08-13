@@ -14,65 +14,63 @@ class Subscription extends Model
         'email',
         'listing_url',
         'listing_title',
-        'is_verified',
         'verification_token',
+        'is_verified',
         'verified_at',
     ];
 
     protected $casts = [
         'is_verified' => 'boolean',
         'verified_at' => 'datetime',
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime',
     ];
 
     /**
-     * Get price histories for this subscription URL
+     * Generate verification token
      */
-    public function priceHistories(): HasMany
+    protected static function boot()
+    {
+        parent::boot();
+        
+        static::creating(function ($subscription) {
+            if (!$subscription->verification_token) {
+                $subscription->verification_token = bin2hex(random_bytes(32)); // 64 character hex string
+            }
+        });
+    }
+
+    /**
+     * Get the price history for this subscription's listing URL
+     */
+    public function priceHistory(): HasMany
     {
         return $this->hasMany(PriceHistory::class, 'listing_url', 'listing_url');
     }
 
     /**
-     * Get the latest price history for this listing
+     * Get the latest price history record
      */
     public function latestPriceHistory()
     {
-        return $this->priceHistories()
-            ->orderBy('checked_at', 'desc')
-            ->first();
+        return $this->priceHistory()->latest('checked_at')->first();
     }
 
     /**
-     * Generate verification token
+     * Check if the listing is currently available
      */
-    public function generateVerificationToken(): string
+    public function isListingAvailable(): bool
     {
-        $token = bin2hex(random_bytes(32));
-        $this->verification_token = $token;
-        return $token;
+        $latest = $this->latestPriceHistory();
+        return $latest ? $latest->is_available : false;
     }
 
     /**
-     * Mark subscription as verified
+     * Get the current price
      */
-    public function markAsVerified(): void
+    public function getCurrentPrice(): ?float
     {
-        $this->is_verified = true;
-        $this->verified_at = now();
-        $this->verification_token = null;
-        $this->save();
-    }
-
-    /**
-     * Check if verification token is expired
-     */
-    public function isVerificationExpired(): bool
-    {
-        if (!$this->created_at) {
-            return true;
-        }
-
-        $expirationHours = config('app.email_verification_expire', 24);
-        return $this->created_at->addHours($expirationHours)->isPast();
+        $latest = $this->latestPriceHistory();
+        return $latest && $latest->is_available ? $latest->price : null;
     }
 }
