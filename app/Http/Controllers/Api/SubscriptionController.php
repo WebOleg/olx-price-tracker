@@ -10,6 +10,8 @@ use App\Services\PriceTrackerService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Exception;
 
 class SubscriptionController extends Controller
@@ -27,7 +29,6 @@ class SubscriptionController extends Controller
 
     /**
      * Create new price subscription with enhanced validation
-     *
      * @param CreateSubscriptionRequest $request
      * @return JsonResponse
      */
@@ -68,7 +69,6 @@ class SubscriptionController extends Controller
 
     /**
      * Verify email subscription with enhanced security
-     *
      * @param string $token
      * @return JsonResponse
      */
@@ -110,7 +110,6 @@ class SubscriptionController extends Controller
 
     /**
      * Get user subscription statistics with enhanced data
-     *
      * @param GetStatsRequest $request
      * @return JsonResponse
      */
@@ -152,7 +151,6 @@ class SubscriptionController extends Controller
 
     /**
      * Delete user subscription
-     *
      * @param Request $request
      * @param int $subscriptionId
      * @return JsonResponse
@@ -196,7 +194,6 @@ class SubscriptionController extends Controller
 
     /**
      * Get global tracking statistics (admin endpoint)
-     *
      * @return JsonResponse
      */
     public function globalStats(): JsonResponse
@@ -226,8 +223,7 @@ class SubscriptionController extends Controller
     }
 
     /**
-     * Health check endpoint with enhanced diagnostics
-     *
+     * Health check endpoint with diagnostics
      * @return JsonResponse
      */
     public function health(): JsonResponse
@@ -241,7 +237,6 @@ class SubscriptionController extends Controller
                 'environment' => config('app.env'),
                 'checks' => [
                     'database' => $this->checkDatabaseHealth(),
-                    'redis' => $this->checkRedisHealth(),
                     'storage' => $this->checkStorageHealth(),
                 ],
             ];
@@ -270,7 +265,6 @@ class SubscriptionController extends Controller
 
     /**
      * Trigger manual price check (admin endpoint)
-     *
      * @param Request $request
      * @return JsonResponse
      */
@@ -318,13 +312,12 @@ class SubscriptionController extends Controller
 
     /**
      * Check database health
-     *
      * @return array
      */
     private function checkDatabaseHealth(): array
     {
         try {
-            \DB::connection()->getPdo();
+            DB::connection()->getPdo();
             return ['status' => 'healthy', 'message' => 'Database connection successful'];
         } catch (Exception $e) {
             return ['status' => 'unhealthy', 'message' => 'Database connection failed'];
@@ -332,35 +325,15 @@ class SubscriptionController extends Controller
     }
 
     /**
-     * Check Redis health
-     *
-     * @return array
-     */
-    private function checkRedisHealth(): array
-    {
-        try {
-            if (config('database.redis.default.host') === null) {
-                return ['status' => 'healthy', 'message' => 'Redis not configured (using database)'];
-            }
-
-            \Illuminate\Support\Facades\Redis::ping();
-            return ['status' => 'healthy', 'message' => 'Redis connection successful'];
-        } catch (Exception $e) {
-            return ['status' => 'healthy', 'message' => 'Redis not available (using database fallback)'];
-        }
-    }
-
-    /**
      * Check storage health
-     *
      * @return array
      */
     private function checkStorageHealth(): array
     {
         try {
             $testFile = 'health-check-' . time() . '.txt';
-            \Storage::put($testFile, 'health check');
-            \Storage::delete($testFile);
+            Storage::put($testFile, 'health check');
+            Storage::delete($testFile);
             return ['status' => 'healthy', 'message' => 'Storage read/write successful'];
         } catch (Exception $e) {
             return ['status' => 'unhealthy', 'message' => 'Storage read/write failed'];

@@ -23,8 +23,6 @@ class PriceTrackerService
 
     /**
      * Check prices for all active subscriptions with optimized queries
-     *
-     * @return array
      */
     public function checkAllPrices(): array
     {
@@ -39,7 +37,6 @@ class PriceTrackerService
         ];
 
         try {
-            // Optimized query: get unique URLs with subscription count in single query
             $uniqueUrls = $this->getUniqueUrlsWithCounts();
 
             Log::info('Price check started', [
@@ -58,7 +55,6 @@ class PriceTrackerService
 
                     $results['notifications_sent'] += $result['notifications_sent'];
 
-                    // Add small delay to avoid overwhelming OLX
                     usleep(500000); // 0.5 seconds
 
                 } catch (Exception $e) {
@@ -88,10 +84,6 @@ class PriceTrackerService
 
     /**
      * Check price for specific URL and notify subscribers with batch processing
-     *
-     * @param string $url
-     * @param int $subscriptionCount
-     * @return array
      */
     public function checkPriceForUrl(string $url, int $subscriptionCount = null): array
     {
@@ -101,7 +93,6 @@ class PriceTrackerService
         ];
 
         try {
-            // Parse listing data
             $listingData = $this->olxParser->parseListingData($url);
 
             if (!$listingData) {
@@ -124,18 +115,14 @@ class PriceTrackerService
 
             $currentPrice = (float) $listingData['price'];
 
-            // Get last price history with optimized query
             $lastHistory = $this->getLastPriceHistory($url);
             $previousPrice = $lastHistory?->price;
 
-            // Check if price actually changed
             if ($previousPrice !== null && bccomp($currentPrice, $previousPrice, 2) === 0) {
-                // Price didn't change, just update checked_at
                 $this->updateLastCheckedTime($url);
                 return $result;
             }
 
-            // Create new price history record
             $priceHistory = $this->createPriceHistory([
                 'listing_url' => $url,
                 'price' => $currentPrice,
@@ -147,12 +134,10 @@ class PriceTrackerService
 
             $result['updated'] = true;
 
-            // Update subscription titles if available
             if (!empty($listingData['title'])) {
                 $this->updateSubscriptionTitles($url, $listingData['title']);
             }
 
-            // Send notifications only if price changed (not initial)
             if ($previousPrice !== null) {
                 $result['notifications_sent'] = $this->notifySubscribers($url, $priceHistory);
             }
@@ -179,8 +164,6 @@ class PriceTrackerService
 
     /**
      * Get unique URLs with subscription counts using optimized query
-     *
-     * @return Collection
      */
     private function getUniqueUrlsWithCounts(): Collection
     {
@@ -188,15 +171,12 @@ class PriceTrackerService
             ->select('listing_url', DB::raw('COUNT(*) as subscription_count'))
             ->where('is_verified', true)
             ->groupBy('listing_url')
-            ->orderBy('subscription_count', 'desc') // Check most popular URLs first
+            ->orderBy('subscription_count', 'desc')
             ->get();
     }
 
     /**
      * Get last price history with optimized query
-     *
-     * @param string $url
-     * @return PriceHistory|null
      */
     private function getLastPriceHistory(string $url): ?PriceHistory
     {
@@ -208,9 +188,6 @@ class PriceTrackerService
 
     /**
      * Create price history record with validation
-     *
-     * @param array $data
-     * @return PriceHistory
      */
     private function createPriceHistory(array $data): PriceHistory
     {
@@ -219,9 +196,6 @@ class PriceTrackerService
 
     /**
      * Update last checked time for existing price history
-     *
-     * @param string $url
-     * @return void
      */
     private function updateLastCheckedTime(string $url): void
     {
@@ -233,10 +207,6 @@ class PriceTrackerService
 
     /**
      * Update subscription titles with batch update
-     *
-     * @param string $url
-     * @param string $title
-     * @return void
      */
     private function updateSubscriptionTitles(string $url, string $title): void
     {
@@ -247,17 +217,12 @@ class PriceTrackerService
 
     /**
      * Notify subscribers with optimized batch processing
-     *
-     * @param string $url
-     * @param PriceHistory $priceHistory
-     * @return int
      */
     private function notifySubscribers(string $url, PriceHistory $priceHistory): int
     {
         $notifications_sent = 0;
 
         try {
-            // Get all verified subscriptions for this URL with optimized query
             $subscriptions = Subscription::where('listing_url', $url)
                 ->where('is_verified', true)
                 ->select(['id', 'email', 'listing_title'])
@@ -265,7 +230,6 @@ class PriceTrackerService
 
             foreach ($subscriptions as $subscription) {
                 try {
-                    // Use job for async email sending to avoid blocking
                     SendEmailNotificationJob::dispatch($subscription, $priceHistory);
                     $notifications_sent++;
 
@@ -296,17 +260,12 @@ class PriceTrackerService
 
     /**
      * Handle unavailable listing with cleanup
-     *
-     * @param string $url
-     * @param string $reason
-     * @return void
      */
     private function handleUnavailableListing(string $url, string $reason): void
     {
         try {
             DB::beginTransaction();
 
-            // Create price history record for unavailable listing
             PriceHistory::create([
                 'listing_url' => $url,
                 'price' => null,
@@ -316,12 +275,10 @@ class PriceTrackerService
                 'checked_at' => now(),
             ]);
 
-            // Get subscriptions to notify
             $subscriptions = Subscription::where('listing_url', $url)
                 ->where('is_verified', true)
                 ->get();
 
-            // Send unavailable notifications
             foreach ($subscriptions as $subscription) {
                 try {
                     $this->emailService->sendUnavailableNotification($subscription, $reason);
@@ -332,9 +289,6 @@ class PriceTrackerService
                     ]);
                 }
             }
-
-            // Optionally delete subscriptions for unavailable listings
-            // Subscription::where('listing_url', $url)->delete();
 
             DB::commit();
 
@@ -356,10 +310,6 @@ class PriceTrackerService
 
     /**
      * Handle inactive listing
-     *
-     * @param string $url
-     * @param string $reason
-     * @return void
      */
     private function handleInactiveListing(string $url, string $reason): void
     {
@@ -367,46 +317,70 @@ class PriceTrackerService
     }
 
     /**
-     * Get price tracking statistics with optimized queries
-     *
-     * @return array
+     * Get tracking statistics compatible with SQLite
      */
     public function getTrackingStatistics(): array
     {
         try {
-            $stats = [
-                'total_subscriptions' => 0,
-                'verified_subscriptions' => 0,
-                'unique_listings' => 0,
-                'total_price_checks' => 0,
-                'price_changes_today' => 0,
-                'active_listings' => 0,
+            $stats = [];
+
+            $stats['total_subscriptions'] = Subscription::where('is_verified', true)->count();
+            $stats['total_listings'] = Subscription::where('is_verified', true)
+                ->distinct('listing_url')->count();
+
+            $totalChecks = PriceHistory::count();
+            $stats['total_checks'] = $totalChecks;
+
+            $today = now()->format('Y-m-d');
+            $changesToday = PriceHistory::whereDate('checked_at', $today)
+                ->whereNotNull('previous_price')
+                ->count();
+            $stats['changes_today'] = $changesToday;
+
+            $activeListings = PriceHistory::where('is_available', true)
+                ->distinct('listing_url')
+                ->count();
+            $stats['active_listings'] = $activeListings;
+
+            $yesterday = now()->subDay();
+            $stats['checks_last_24h'] = PriceHistory::where('checked_at', '>', $yesterday)->count();
+
+            // Виправлено: використовуємо правильні назви колонок
+            $avgChange = PriceHistory::whereNotNull('previous_price')
+                ->whereNotNull('price')
+                ->where('price', '>', 0)
+                ->where('previous_price', '>', 0)
+                ->get()
+                ->map(function ($history) {
+                    return (($history->price - $history->previous_price) / $history->previous_price) * 100;
+                })
+                ->avg();
+
+            $stats['avg_price_change_percent'] = round($avgChange ?? 0, 2);
+
+            $mostActive = PriceHistory::select('listing_url')
+                ->selectRaw('COUNT(*) as check_count')
+                ->groupBy('listing_url')
+                ->orderByDesc('check_count')
+                ->limit(5)
+                ->get()
+                ->pluck('check_count', 'listing_url')
+                ->toArray();
+
+            $stats['most_active_listings'] = $mostActive;
+
+            $stats['system'] = [
+                'database_size' => $this->getDatabaseSize(),
+                'oldest_record' => PriceHistory::min('checked_at'),
+                'newest_record' => PriceHistory::max('checked_at'),
             ];
 
-            // Use optimized aggregate queries
-            $subscriptionStats = DB::table('subscriptions')
-                ->selectRaw('
-                    COUNT(*) as total,
-                    SUM(CASE WHEN is_verified = 1 THEN 1 ELSE 0 END) as verified,
-                    COUNT(DISTINCT listing_url) as unique_urls
-                ')
-                ->first();
+            $stats['generated_at'] = now()->toISOString();
 
-            $stats['total_subscriptions'] = $subscriptionStats->total;
-            $stats['verified_subscriptions'] = $subscriptionStats->verified;
-            $stats['unique_listings'] = $subscriptionStats->unique_urls;
-
-            $priceStats = DB::table('price_histories')
-                ->selectRaw('
-                    COUNT(*) as total_checks,
-                    SUM(CASE WHEN DATE(checked_at) = CURDATE() AND previous_price IS NOT NULL THEN 1 ELSE 0 END) as changes_today,
-                    COUNT(DISTINCT CASE WHEN is_available = 1 THEN listing_url END) as active_listings
-                ')
-                ->first();
-
-            $stats['total_price_checks'] = $priceStats->total_checks;
-            $stats['price_changes_today'] = $priceStats->changes_today;
-            $stats['active_listings'] = $priceStats->active_listings;
+            Log::info('Tracking statistics generated successfully', [
+                'total_subscriptions' => $stats['total_subscriptions'],
+                'total_checks' => $stats['total_checks'],
+            ]);
 
             return $stats;
 
@@ -417,15 +391,42 @@ class PriceTrackerService
 
             return [
                 'error' => 'Failed to retrieve statistics',
+                'total_subscriptions' => 0,
+                'total_checks' => 0,
+                'changes_today' => 0,
+                'active_listings' => 0,
             ];
         }
     }
 
     /**
+     * Get database size (SQLite compatible)
+     */
+    private function getDatabaseSize(): string
+    {
+        try {
+            if (config('database.default') === 'sqlite') {
+                $dbPath = database_path('database.sqlite');
+                if (file_exists($dbPath)) {
+                    $bytes = filesize($dbPath);
+                    $units = ['B', 'KB', 'MB', 'GB'];
+                    $i = 0;
+                    while ($bytes >= 1024 && $i < count($units) - 1) {
+                        $bytes /= 1024;
+                        $i++;
+                    }
+                    return round($bytes, 2) . ' ' . $units[$i];
+                }
+            }
+            return 'Unknown';
+        } catch (Exception $e) {
+            Log::warning('Failed to get database size', ['error' => $e->getMessage()]);
+            return 'Unknown';
+        }
+    }
+
+    /**
      * Clean old price history records to optimize database
-     *
-     * @param int $daysToKeep
-     * @return int
      */
     public function cleanOldPriceHistory(int $daysToKeep = 90): int
     {
